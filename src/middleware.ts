@@ -1,6 +1,13 @@
-import { clerkMiddleware } from '@clerk/nextjs/server';
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
-export default clerkMiddleware();
+// This variable contains the function createRouteMatcher. Any pathways placed here will need to be protected by authentication.
+const isProtectedRoute = createRouteMatcher(["/generate-program", "/profile"]);
+
+// This clerkMiddleware method intercepts all incoming requests. 
+// If a protected pathway is requested the method will make sure they are authenticated first.
+export default clerkMiddleware(async (auth, req) => {
+  if (isProtectedRoute(req)) await auth.protect();
+});
 
 export const config = {
   matcher: [
