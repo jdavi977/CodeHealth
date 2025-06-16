@@ -8,7 +8,7 @@ export default defineSchema({
         email: v.string(),
         image: v.optional(v.string()),
         clerkId: v.string(),
-    }).index("by_clerk_id", ["clerkId"]),
+    }).index("by_clerk_id", ["clerkId"]), // allows us to query a user with the clerkId field
 
     plans: defineTable({
         userId: v.id("users"),
