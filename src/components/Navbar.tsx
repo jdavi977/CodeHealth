@@ -1,6 +1,6 @@
 "use client"
 
-import { SignInButton, SignUpButton, useUser } from "@clerk/nextjs";
+import { SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
 import { DumbbellIcon, HomeIcon, UserIcon, ZapIcon } from "lucide-react";
 import Link from "next/link";
 import { Button } from "./ui/button";
@@ -55,6 +55,7 @@ const Navbar = () => {
                             >
                                 <Link href="/generate-program">Get Started</Link>
                             </Button>
+                            <UserButton />
                         </>
                     ) : (
                         <>
