@@ -7,35 +7,23 @@ import { httpAction } from "./_generated/server";
 const http = httpRouter();
 
 http.route({
-    // When a user is created clerk will send an event to this endpoint (path)
-    path: "/clerk-webhook", 
+    path: "/clerk-webhook",
     method: "POST",
     handler: httpAction(async (ctx, request) => {
         const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
-
-        // First checks if the password is the same from clerk
         if (!webhookSecret) {
             throw new Error("Missing CLERK_WEBHOOK_SECRET environment variable");
         }
-
-        // Checks if the svix fields are present
         const svix_id = request.headers.get("svix-id");
         const svix_signature = request.headers.get("svix-signature");
         const svix_timestamp = request.headers.get("svix-timestamp");
-
         if (!svix_id || !svix_signature || !svix_timestamp) {
-            return new Response("No svix headers found", {
-                status: 400,
-            });
+            return new Response("No svix headers found", { status: 400 });
         }
-
-        // Now we verify if clerk is sending the event
         const payload = await request.json();
         const body = JSON.stringify(payload);
-
         const wh = new Webhook(webhookSecret);
         let evt: WebhookEvent;
-
         try {
             evt = wh.verify(body, {
                 "svix-id": svix_id,
@@ -44,36 +32,56 @@ http.route({
             }) as WebhookEvent;
         } catch (err) {
             console.log("Error verifying webhook:", err);
-            return new Response("Error occured", {status: 400});
+            return new Response("Error occured", { status: 400 });
         }
-
-        // Once verified we take in the event type
         const eventType = evt.type;
-
-        // Create user in convex database
         if (eventType === "user.created") {
-            const {id, first_name, last_name, image_url, email_addresses} = evt.data;
-
+            const { id, first_name, last_name, image_url, email_addresses } = evt.data;
             const email = email_addresses[0].email_address;
-
             const name = `${first_name || ""} ${last_name || ""}`.trim();
-
             try {
-                // runMutation that will take these arguments and save the user to the database using the syncUser method
                 await ctx.runMutation(api.users.syncUser, {
                     email,
                     name,
                     image: image_url,
-                    clerkId:id,
-                })
+                    clerkId: id,
+                });
             } catch (error) {
                 console.log("Error creating user:", error);
-                return new Response("Error creating user", {status: 500});
+                return new Response("Error creating user", { status: 500 });
             }
         }
+        return new Response("Webhook processed successfully", { status: 200 });
+    }),
+});
 
-        return new Response("Webhook processed successfully", {status: 200});
-
+http.route({
+    path: "/generate-plan",
+    method: "POST",
+    handler: httpAction(async (_, request) => {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return new Response("Missing GEMINI_API_KEY", { status: 500 });
+        }
+        const { messages } = await request.json();
+        const contents = (messages || []).map((m: any) => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [{ text: m.content }],
+        }));
+        const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contents }),
+            }
+        );
+        const data = await res.json();
+        const plan = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        return new Response(JSON.stringify({ plan }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+        });
     }),
 });
 
