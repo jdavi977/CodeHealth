@@ -3,8 +3,11 @@ import { WebhookEvent } from "@clerk/nextjs/server";
 import { Webhook } from "svix";
 import { api } from "./_generated/api";
 import { httpAction } from "./_generated/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const http = httpRouter();
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 http.route({
     path: "/clerk-webhook",
@@ -52,36 +55,6 @@ http.route({
             }
         }
         return new Response("Webhook processed successfully", { status: 200 });
-    }),
-});
-
-http.route({
-    path: "/generate-plan",
-    method: "POST",
-    handler: httpAction(async (_, request) => {
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) {
-            return new Response("Missing GEMINI_API_KEY", { status: 500 });
-        }
-        const { messages } = await request.json();
-        const contents = (messages || []).map((m: any) => ({
-            role: m.role === "assistant" ? "model" : "user",
-            parts: [{ text: m.content }],
-        }));
-        const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contents }),
-            }
-        );
-        const data = await res.json();
-        const plan = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        return new Response(JSON.stringify({ plan }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-        });
     }),
 });
 

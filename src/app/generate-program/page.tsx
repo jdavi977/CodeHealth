@@ -1,14 +1,17 @@
 "use client"
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
+import { useAction } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+
 
 interface ChatMessage {
   role: "assistant" | "user";
   content: string;
 }
-
 
 const GenerateProgramPage = () => {
   const { user } = useUser();
@@ -16,16 +19,9 @@ const GenerateProgramPage = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const messageContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [input, setInput] = useState("");
+  const generateFromGemini = useAction(api.gemini.generate);
 
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-001",
-    generationConfig: {
-      temperature: 0.4, // lower temperature for more predictable outputs
-      topP: 0.9,
-      responseMimeType: "application/json",
-    },
-  });
 
   {/* AUTO SCROLL */}
   useEffect(() => {
@@ -35,125 +31,122 @@ const GenerateProgramPage = () => {
     }
   }, [messages]);
 
-  const sendToGemini = async (
-    conversation: ChatMessage[]
-  ): Promise<string | undefined> => {
-    const contents = conversation.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    }));
-
-    const res = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents }),
-    });
-    const data = await res.json();
-    return (
-      data.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "Sorry, something went wrong."
-    );
-  };
-
-  const handleSend = async () => {
-    if (!inputRef.current || !inputRef.current.value.trim()) return;
-    const text = inputRef.current.value.trim();
-    inputRef.current.value = "";
-    const convo = [...messages, { role: "user", content: text }];
-    setMessages(convo);
-    setLoading(true);
-    try {
-      const reply = await sendToGemini(convo);
-      if (reply) {
-        setMessages([...convo, { role: "assistant", content: reply }]);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const startConversation = () => {
     setStarted(true);
     setMessages([
       {
         role: "assistant",
         content:
-          "Hi! I'm your fitness assistant. Let's talk about your goals.",
+        `Hi ${user ? (user.firstName + " " + (user.lastName || "")).trim() : "Guest"}! I'm CodeHealth AI your personal fitness assistant. Ready to get started?`,
       },
     ]);
   };
 
-  const createProgram = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_CONVEX_URL}/generate-plan`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages }),
-        }
-      );
-      const data = await res.json();
-      if (data.plan) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: data.plan },
-        ]);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+const handleSend = async () => {
+  if (!input.trim()) return;
 
-const sendToGemini = async (conversation: ChatMessage[]) => {
-  const chatHistory = conversation.map((msg) => ({
-    role: msg.role === "assistant" ? "model" : "user", 
-    parts: [{ text: msg.content }],
+  const userMessage: ChatMessage = { role: "user", content: input };
+  const newMessages: ChatMessage[] = [...messages, userMessage];
+  setMessages(newMessages);
+  setInput("");
+  setLoading(true);
+
+  const geminiMessages = newMessages.map((msg) => ({
+    role: msg.role === "assistant" ? "model" as const : "user" as const,
+    parts: msg.content,
   }));
 
   try {
-    const chat = await model.startChat({
-      history: [
-        {
-          role: "system",
-          parts: [{ text: systemPrompt }],
-        },
-        ...chatHistory,
-      ],
-    });
+    const responseText = await generateFromGemini({ messages: geminiMessages });
 
-    const result = await chat.sendMessage(conversation[conversation.length - 1].content);
-    const reply = await result.response.text();
-    return reply;
+    const assistantMessage: ChatMessage = {
+      role: "assistant",
+      content: responseText,
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
   } catch (err) {
-    console.error("Gemini Error:", err);
-    return "Sorry, I had trouble generating a response.";
+    console.error("Gemini API error:", err);
+  } finally {
+    setLoading(false);
   }
 };
 
-
   return (
     <div className="flex flex-col min-h-screen text-foreground pb-6 pt-24">
-      <div className="container mx-auto px-4 h-full max-w-2xl">
+      <div className="container mx-auto px-4 h-full max-w-3xl">
+        {/* TITLE */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold font-mono">
             <span>Generate Your </span>
             <span className="text-primary uppercase">Fitness Program</span>
           </h1>
           <p className="text-muted-foreground">
-            Chat with our AI assistant to build your personalized plan
+            Chat with our AI assistant to build your personalized plan!
           </p>
         </div>
 
+        {/* VIDEO CALL AREA */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* AI ASSISTANT CARD */}
+          <Card className="bg-card/90 backdrop-blur-sm border border-border overflow-hidden relative">
+            <div className="aspect-video flex flex-col items-center justify-center p-6 relative">
+
+              {/* AI IMAGE */}
+              <div className="relative size-32 mb-4">
+
+                <div className="relative w-full h-full rounded-full bg-card flex items-center justify-center border border-border overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-b from-primary/10 to-secondary/10"></div>
+                  <img
+                    src="/avatar1.png"
+                    alt="AI Assistant"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+
+              <h2 className="text-xl font-bold text-foreground">CodeHealth AI</h2>
+              <p className="text-sm text-muted-foreground mt-1">Fitness & Diet Coach</p>
+              {/* Ready Text */}
+              <div className={`mt-4 flex items-center gap-2 px-3 py-1 rounded-full bg-card border`}>
+                <div className={`w-2 h-2 rounded-full bg-muted`} />
+                <span className="text-xs text-muted-foreground">Ready</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* USER CARD */}
+          <Card className={`bg-card/90 backdrop-blur-sm border overflow-hidden relative`}>
+            <div className="aspect-video flex flex-col items-center justify-center p-6 relative">
+              {/* User Image */}
+              <div className="relative size-32 mb-4">
+                <img
+                  src={user?.imageUrl}
+                  alt="User"
+                  // ADD THIS "size-full" class to make it rounded on all images
+                  className="size-full object-cover rounded-full"
+                />
+              </div>
+
+              <h2 className="text-xl font-bold text-foreground">You</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {user ? (user.firstName + " " + (user.lastName || "")).trim() : "Guest"}
+              </p>
+
+              {/* Ready Text */}
+              <div className={`mt-4 flex items-center gap-2 px-3 py-1 rounded-full bg-card border`}>
+                <div className={`w-2 h-2 rounded-full bg-muted`} />
+                <span className="text-xs text-muted-foreground">Ready</span>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* MESSAGE CONTAINER */}
         {messages.length > 0 && (
           <div
             ref={messageContainerRef}
-            className="w-full bg-card/90 backdrop-blur-sm border border-border rounded-xl p-4 mb-4 h-64 overflow-y-auto"
+            className="w-full bg-card/90 backdrop-blur-sm border border-border rounded-xl p-4 mb-4 h-70 overflow-y-auto"
           >
             <div className="space-y-3">
               {messages.map((msg, i) => (
@@ -168,12 +161,14 @@ const sendToGemini = async (conversation: ChatMessage[]) => {
           </div>
         )}
 
+        {/* TEXT BOX CONTAINER */}
         {started && (
           <div className="flex gap-2 mb-4">
             <input
-              ref={inputRef}
               type="text"
+              value={input}
               placeholder="Type your message"
+              onChange={(e) => setInput(e.target.value)}
               className="flex-grow border rounded-md px-3 py-2 bg-background"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -188,18 +183,18 @@ const sendToGemini = async (conversation: ChatMessage[]) => {
           </div>
         )}
 
-        <div className="flex justify-center gap-4">
+        {/* CONVERSATION BUTTON */}
+        <div className="flex justify-center gap-4 pb-30">
           {!started ? (
-            <Button className="w-40 text-xl rounded-3xl" onClick={startConversation}>
+            <Button className="w-70 text-xl rounded-3xl" onClick={startConversation}>
               Start Conversation
             </Button>
           ) : (
             <Button
-              className="w-40 text-xl rounded-3xl"
-              onClick={createProgram}
+              className="w-70 text-xl rounded-3xl"
               disabled={loading}
             >
-              Create Program
+              Generate Program
             </Button>
           )}
         </div>
